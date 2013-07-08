@@ -19,7 +19,7 @@ setup(name='hbase',
     version='0.1',
     description="A developer-friendly Python library to interact "
                   "with Apache HBase",
-    long_description=get_file_contents('README.rst'),
+    long_description=get_file_contents('README.md'),
     author="duanhongyi",
     author_email="duanhongyi@doopai.com",
     url='https://github.com/duanhongyi/hbase',

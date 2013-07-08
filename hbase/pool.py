@@ -135,7 +135,7 @@ method waits forever for a connection to become available.
             # occurred in the Thrift layer, since we don't know whether
             # the connection is still usable.
             logger.info("Replacing tainted pool connection")
-            connection._refresh_thrift_client()
+            connection.refresh()
             connection.open()
 
             # Reraise to caller; see contextlib.contextmanager() docs

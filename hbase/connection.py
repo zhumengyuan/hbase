@@ -47,7 +47,7 @@ class Connection(Client):
 
         self._initialized = True
 
-    def _refresh_thrift_client(self):
+    def refresh(self):
         """Refresh the Thrift socket, transport, and client."""
         socket = TSocket(self.host, self.port)
         if self.timeout is not None:
