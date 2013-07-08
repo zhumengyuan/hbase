@@ -6,6 +6,8 @@ HappyBase connection module.
 
 import logging
 
+from poolbase import pool
+from poolbase import connection
 from hbase.THBaseService import Client
 from thrift.transport.TSocket import TSocket
 from thrift.transport.TTransport import TBufferedTransport, TFramedTransport
@@ -23,7 +25,7 @@ DEFAULT_HOST = 'localhost'
 DEFAULT_PORT = 9090
 
 
-class Connection(Client):
+class Connection(Client, connection.Connection):
 
     def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT, timeout=None,
                  autoconnect=True, transport='buffered'):
@@ -40,7 +42,7 @@ class Connection(Client):
 
         self._transport_class = THRIFT_TRANSPORTS[transport]
         self.transport = None
-        self._refresh_thrift_client()
+        self.refresh()
 
         if autoconnect:
             self.open()
@@ -93,3 +95,14 @@ This method closes the underlying Thrift transport (TCP connection).
             return
         else:
             self.close()
+
+
+class ConnectionPool(pool.ConnectionPool):
+
+    def __init__(self, size, **kwargs):
+        pool.ConnectionPool.__init__(
+            self,
+            size,
+            connection_klass=Connection,
+            **kwargs
+        )
