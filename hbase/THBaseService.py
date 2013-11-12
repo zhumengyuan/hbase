@@ -119,9 +119,9 @@ class Iface:
     """
     Bulk commit a List of TDeletes to the table.
 
-    This returns a list of TDeletes that were not
-    executed. So if everything succeeds you'll
-    receive an empty list.
+    Throws a TIOError if any of the deletes fail.
+
+    Always returns an empty list for backwards compatibility.
 
     Parameters:
      - table: the table to delete from
@@ -145,21 +145,6 @@ class Iface:
     check is for the non-existence of the
     column in question
      - deleteSingle: the TDelete to execute if the check succeeds
-    """
-    pass
-
-  def mutateRow(self, table, mutations):
-    """
-    Performs multiple mutations atomically on a single row. Currently
-    {@link Put} and {@link Delete} are supported.
-
-    @param arm object that specifies the set of mutations to perform
-    atomically
-    @throws TIOError
-
-    Parameters:
-     - table: the table to get the Scanner for
-     - mutations
     """
     pass
 
@@ -197,13 +182,36 @@ class Iface:
 
   def closeScanner(self, scannerId):
     """
-    Closes the scanner. Should be called if you need to close
-    the Scanner before all results are read.
-
-    Exhausted scanners are closed automatically.
+    Closes the scanner. Should be called to free server side resources timely.
+    Typically close once the scanner is not needed anymore, i.e. after looping
+    over it to get all the required rows.
 
     Parameters:
      - scannerId: the Id of the Scanner to close *
+    """
+    pass
+
+  def mutateRow(self, table, rowMutations):
+    """
+    mutateRow performs multiple mutations atomically on a single row.
+
+    Parameters:
+     - table: table to apply the mutations
+     - rowMutations: mutations to apply
+    """
+    pass
+
+  def getScannerResults(self, table, scan, numRows):
+    """
+    Get results for the provided TScan object.
+    This helper function opens a scanner, get the results and close the scanner.
+
+    @return between zero and numRows TResults
+
+    Parameters:
+     - table: the table to get the Scanner for
+     - scan: the scan object to get a Scanner for
+     - numRows: number of rows to return
     """
     pass
 
@@ -496,9 +504,9 @@ class Client(Iface):
     """
     Bulk commit a List of TDeletes to the table.
 
-    This returns a list of TDeletes that were not
-    executed. So if everything succeeds you'll
-    receive an empty list.
+    Throws a TIOError if any of the deletes fail.
+
+    Always returns an empty list for backwards compatibility.
 
     Parameters:
      - table: the table to delete from
@@ -580,45 +588,6 @@ class Client(Iface):
     if result.io is not None:
       raise result.io
     raise TApplicationException(TApplicationException.MISSING_RESULT, "checkAndDelete failed: unknown result");
-
-  def mutateRow(self, table, mutations):
-    """
-    Performs multiple mutations atomically on a single row. Currently
-    {@link Put} and {@link Delete} are supported.
-
-    @param arm object that specifies the set of mutations to perform
-    atomically
-    @throws TIOError
-
-    Parameters:
-     - table: the table to get the Scanner for
-     - mutations
-    """
-    self.send_mutateRow(table, mutations)
-    self.recv_mutateRow()
-
-  def send_mutateRow(self, table, mutations):
-    self._oprot.writeMessageBegin('mutateRow', TMessageType.CALL, self._seqid)
-    args = mutateRow_args()
-    args.table = table
-    args.mutations = mutations
-    args.write(self._oprot)
-    self._oprot.writeMessageEnd()
-    self._oprot.trans.flush()
-
-  def recv_mutateRow(self, ):
-    (fname, mtype, rseqid) = self._iprot.readMessageBegin()
-    if mtype == TMessageType.EXCEPTION:
-      x = TApplicationException()
-      x.read(self._iprot)
-      self._iprot.readMessageEnd()
-      raise x
-    result = mutateRow_result()
-    result.read(self._iprot)
-    self._iprot.readMessageEnd()
-    if result.io is not None:
-      raise result.io
-    return
 
   def increment(self, table, increment):
     """
@@ -734,10 +703,9 @@ class Client(Iface):
 
   def closeScanner(self, scannerId):
     """
-    Closes the scanner. Should be called if you need to close
-    the Scanner before all results are read.
-
-    Exhausted scanners are closed automatically.
+    Closes the scanner. Should be called to free server side resources timely.
+    Typically close once the scanner is not needed anymore, i.e. after looping
+    over it to get all the required rows.
 
     Parameters:
      - scannerId: the Id of the Scanner to close *
@@ -769,6 +737,81 @@ class Client(Iface):
       raise result.ia
     return
 
+  def mutateRow(self, table, rowMutations):
+    """
+    mutateRow performs multiple mutations atomically on a single row.
+
+    Parameters:
+     - table: table to apply the mutations
+     - rowMutations: mutations to apply
+    """
+    self.send_mutateRow(table, rowMutations)
+    self.recv_mutateRow()
+
+  def send_mutateRow(self, table, rowMutations):
+    self._oprot.writeMessageBegin('mutateRow', TMessageType.CALL, self._seqid)
+    args = mutateRow_args()
+    args.table = table
+    args.rowMutations = rowMutations
+    args.write(self._oprot)
+    self._oprot.writeMessageEnd()
+    self._oprot.trans.flush()
+
+  def recv_mutateRow(self, ):
+    (fname, mtype, rseqid) = self._iprot.readMessageBegin()
+    if mtype == TMessageType.EXCEPTION:
+      x = TApplicationException()
+      x.read(self._iprot)
+      self._iprot.readMessageEnd()
+      raise x
+    result = mutateRow_result()
+    result.read(self._iprot)
+    self._iprot.readMessageEnd()
+    if result.io is not None:
+      raise result.io
+    return
+
+  def getScannerResults(self, table, scan, numRows):
+    """
+    Get results for the provided TScan object.
+    This helper function opens a scanner, get the results and close the scanner.
+
+    @return between zero and numRows TResults
+
+    Parameters:
+     - table: the table to get the Scanner for
+     - scan: the scan object to get a Scanner for
+     - numRows: number of rows to return
+    """
+    self.send_getScannerResults(table, scan, numRows)
+    return self.recv_getScannerResults()
+
+  def send_getScannerResults(self, table, scan, numRows):
+    self._oprot.writeMessageBegin('getScannerResults', TMessageType.CALL, self._seqid)
+    args = getScannerResults_args()
+    args.table = table
+    args.scan = scan
+    args.numRows = numRows
+    args.write(self._oprot)
+    self._oprot.writeMessageEnd()
+    self._oprot.trans.flush()
+
+  def recv_getScannerResults(self, ):
+    (fname, mtype, rseqid) = self._iprot.readMessageBegin()
+    if mtype == TMessageType.EXCEPTION:
+      x = TApplicationException()
+      x.read(self._iprot)
+      self._iprot.readMessageEnd()
+      raise x
+    result = getScannerResults_result()
+    result.read(self._iprot)
+    self._iprot.readMessageEnd()
+    if result.success is not None:
+      return result.success
+    if result.io is not None:
+      raise result.io
+    raise TApplicationException(TApplicationException.MISSING_RESULT, "getScannerResults failed: unknown result");
+
 
 class Processor(Iface, TProcessor):
   def __init__(self, handler):
@@ -783,11 +826,12 @@ class Processor(Iface, TProcessor):
     self._processMap["deleteSingle"] = Processor.process_deleteSingle
     self._processMap["deleteMultiple"] = Processor.process_deleteMultiple
     self._processMap["checkAndDelete"] = Processor.process_checkAndDelete
-    self._processMap["mutateRow"] = Processor.process_mutateRow
     self._processMap["increment"] = Processor.process_increment
     self._processMap["openScanner"] = Processor.process_openScanner
     self._processMap["getScannerRows"] = Processor.process_getScannerRows
     self._processMap["closeScanner"] = Processor.process_closeScanner
+    self._processMap["mutateRow"] = Processor.process_mutateRow
+    self._processMap["getScannerResults"] = Processor.process_getScannerResults
 
   def process(self, iprot, oprot):
     (name, type, seqid) = iprot.readMessageBegin()
@@ -930,20 +974,6 @@ class Processor(Iface, TProcessor):
     oprot.writeMessageEnd()
     oprot.trans.flush()
 
-  def process_mutateRow(self, seqid, iprot, oprot):
-    args = mutateRow_args()
-    args.read(iprot)
-    iprot.readMessageEnd()
-    result = mutateRow_result()
-    try:
-      self._handler.mutateRow(args.table, args.mutations)
-    except TIOError, io:
-      result.io = io
-    oprot.writeMessageBegin("mutateRow", TMessageType.REPLY, seqid)
-    result.write(oprot)
-    oprot.writeMessageEnd()
-    oprot.trans.flush()
-
   def process_increment(self, seqid, iprot, oprot):
     args = increment_args()
     args.read(iprot)
@@ -1000,6 +1030,34 @@ class Processor(Iface, TProcessor):
     except TIllegalArgument, ia:
       result.ia = ia
     oprot.writeMessageBegin("closeScanner", TMessageType.REPLY, seqid)
+    result.write(oprot)
+    oprot.writeMessageEnd()
+    oprot.trans.flush()
+
+  def process_mutateRow(self, seqid, iprot, oprot):
+    args = mutateRow_args()
+    args.read(iprot)
+    iprot.readMessageEnd()
+    result = mutateRow_result()
+    try:
+      self._handler.mutateRow(args.table, args.rowMutations)
+    except TIOError, io:
+      result.io = io
+    oprot.writeMessageBegin("mutateRow", TMessageType.REPLY, seqid)
+    result.write(oprot)
+    oprot.writeMessageEnd()
+    oprot.trans.flush()
+
+  def process_getScannerResults(self, seqid, iprot, oprot):
+    args = getScannerResults_args()
+    args.read(iprot)
+    iprot.readMessageEnd()
+    result = getScannerResults_result()
+    try:
+      result.success = self._handler.getScannerResults(args.table, args.scan, args.numRows)
+    except TIOError, io:
+      result.io = io
+    oprot.writeMessageBegin("getScannerResults", TMessageType.REPLY, seqid)
     result.write(oprot)
     oprot.writeMessageEnd()
     oprot.trans.flush()
@@ -1342,11 +1400,11 @@ class getMultiple_args:
       elif fid == 2:
         if ftype == TType.LIST:
           self.gets = []
-          (_etype52, _size49) = iprot.readListBegin()
-          for _i53 in xrange(_size49):
-            _elem54 = TGet()
-            _elem54.read(iprot)
-            self.gets.append(_elem54)
+          (_etype97, _size94) = iprot.readListBegin()
+          for _i98 in xrange(_size94):
+            _elem99 = TGet()
+            _elem99.read(iprot)
+            self.gets.append(_elem99)
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
@@ -1367,8 +1425,8 @@ class getMultiple_args:
     if self.gets is not None:
       oprot.writeFieldBegin('gets', TType.LIST, 2)
       oprot.writeListBegin(TType.STRUCT, len(self.gets))
-      for iter55 in self.gets:
-        iter55.write(oprot)
+      for iter100 in self.gets:
+        iter100.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
     oprot.writeFieldStop()
@@ -1421,11 +1479,11 @@ class getMultiple_result:
       if fid == 0:
         if ftype == TType.LIST:
           self.success = []
-          (_etype59, _size56) = iprot.readListBegin()
-          for _i60 in xrange(_size56):
-            _elem61 = TResult()
-            _elem61.read(iprot)
-            self.success.append(_elem61)
+          (_etype104, _size101) = iprot.readListBegin()
+          for _i105 in xrange(_size101):
+            _elem106 = TResult()
+            _elem106.read(iprot)
+            self.success.append(_elem106)
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
@@ -1448,8 +1506,8 @@ class getMultiple_result:
     if self.success is not None:
       oprot.writeFieldBegin('success', TType.LIST, 0)
       oprot.writeListBegin(TType.STRUCT, len(self.success))
-      for iter62 in self.success:
-        iter62.write(oprot)
+      for iter107 in self.success:
+        iter107.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
     if self.io is not None:
@@ -1851,11 +1909,11 @@ class putMultiple_args:
       elif fid == 2:
         if ftype == TType.LIST:
           self.puts = []
-          (_etype66, _size63) = iprot.readListBegin()
-          for _i67 in xrange(_size63):
-            _elem68 = TPut()
-            _elem68.read(iprot)
-            self.puts.append(_elem68)
+          (_etype111, _size108) = iprot.readListBegin()
+          for _i112 in xrange(_size108):
+            _elem113 = TPut()
+            _elem113.read(iprot)
+            self.puts.append(_elem113)
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
@@ -1876,8 +1934,8 @@ class putMultiple_args:
     if self.puts is not None:
       oprot.writeFieldBegin('puts', TType.LIST, 2)
       oprot.writeListBegin(TType.STRUCT, len(self.puts))
-      for iter69 in self.puts:
-        iter69.write(oprot)
+      for iter114 in self.puts:
+        iter114.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
     oprot.writeFieldStop()
@@ -2135,11 +2193,11 @@ class deleteMultiple_args:
       elif fid == 2:
         if ftype == TType.LIST:
           self.deletes = []
-          (_etype73, _size70) = iprot.readListBegin()
-          for _i74 in xrange(_size70):
-            _elem75 = TDelete()
-            _elem75.read(iprot)
-            self.deletes.append(_elem75)
+          (_etype118, _size115) = iprot.readListBegin()
+          for _i119 in xrange(_size115):
+            _elem120 = TDelete()
+            _elem120.read(iprot)
+            self.deletes.append(_elem120)
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
@@ -2160,8 +2218,8 @@ class deleteMultiple_args:
     if self.deletes is not None:
       oprot.writeFieldBegin('deletes', TType.LIST, 2)
       oprot.writeListBegin(TType.STRUCT, len(self.deletes))
-      for iter76 in self.deletes:
-        iter76.write(oprot)
+      for iter121 in self.deletes:
+        iter121.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
     oprot.writeFieldStop()
@@ -2214,11 +2272,11 @@ class deleteMultiple_result:
       if fid == 0:
         if ftype == TType.LIST:
           self.success = []
-          (_etype80, _size77) = iprot.readListBegin()
-          for _i81 in xrange(_size77):
-            _elem82 = TDelete()
-            _elem82.read(iprot)
-            self.success.append(_elem82)
+          (_etype125, _size122) = iprot.readListBegin()
+          for _i126 in xrange(_size122):
+            _elem127 = TDelete()
+            _elem127.read(iprot)
+            self.success.append(_elem127)
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
@@ -2241,8 +2299,8 @@ class deleteMultiple_result:
     if self.success is not None:
       oprot.writeFieldBegin('success', TType.LIST, 0)
       oprot.writeListBegin(TType.STRUCT, len(self.success))
-      for iter83 in self.success:
-        iter83.write(oprot)
+      for iter128 in self.success:
+        iter128.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
     if self.io is not None:
@@ -2450,144 +2508,6 @@ class checkAndDelete_result:
       oprot.writeFieldBegin('success', TType.BOOL, 0)
       oprot.writeBool(self.success)
       oprot.writeFieldEnd()
-    if self.io is not None:
-      oprot.writeFieldBegin('io', TType.STRUCT, 1)
-      self.io.write(oprot)
-      oprot.writeFieldEnd()
-    oprot.writeFieldStop()
-    oprot.writeStructEnd()
-
-  def validate(self):
-    return
-
-
-  def __repr__(self):
-    L = ['%s=%r' % (key, value)
-      for key, value in self.__dict__.iteritems()]
-    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
-
-  def __eq__(self, other):
-    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
-
-  def __ne__(self, other):
-    return not (self == other)
-
-class mutateRow_args:
-  """
-  Attributes:
-   - table: the table to get the Scanner for
-   - mutations
-  """
-
-  thrift_spec = (
-    None, # 0
-    (1, TType.STRING, 'table', None, None, ), # 1
-    (2, TType.STRUCT, 'mutations', (TRowMutations, TRowMutations.thrift_spec), None, ), # 2
-  )
-
-  def __init__(self, table=None, mutations=None,):
-    self.table = table
-    self.mutations = mutations
-
-  def read(self, iprot):
-    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
-      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
-      return
-    iprot.readStructBegin()
-    while True:
-      (fname, ftype, fid) = iprot.readFieldBegin()
-      if ftype == TType.STOP:
-        break
-      if fid == 1:
-        if ftype == TType.STRING:
-          self.table = iprot.readString();
-        else:
-          iprot.skip(ftype)
-      elif fid == 2:
-        if ftype == TType.STRUCT:
-          self.mutations = TRowMutations()
-          self.mutations.read(iprot)
-        else:
-          iprot.skip(ftype)
-      else:
-        iprot.skip(ftype)
-      iprot.readFieldEnd()
-    iprot.readStructEnd()
-
-  def write(self, oprot):
-    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
-      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
-      return
-    oprot.writeStructBegin('mutateRow_args')
-    if self.table is not None:
-      oprot.writeFieldBegin('table', TType.STRING, 1)
-      oprot.writeString(self.table)
-      oprot.writeFieldEnd()
-    if self.mutations is not None:
-      oprot.writeFieldBegin('mutations', TType.STRUCT, 2)
-      self.mutations.write(oprot)
-      oprot.writeFieldEnd()
-    oprot.writeFieldStop()
-    oprot.writeStructEnd()
-
-  def validate(self):
-    if self.table is None:
-      raise TProtocol.TProtocolException(message='Required field table is unset!')
-    if self.mutations is None:
-      raise TProtocol.TProtocolException(message='Required field mutations is unset!')
-    return
-
-
-  def __repr__(self):
-    L = ['%s=%r' % (key, value)
-      for key, value in self.__dict__.iteritems()]
-    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
-
-  def __eq__(self, other):
-    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
-
-  def __ne__(self, other):
-    return not (self == other)
-
-class mutateRow_result:
-  """
-  Attributes:
-   - io
-  """
-
-  thrift_spec = (
-    None, # 0
-    (1, TType.STRUCT, 'io', (TIOError, TIOError.thrift_spec), None, ), # 1
-  )
-
-  def __init__(self, io=None,):
-    self.io = io
-
-  def read(self, iprot):
-    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
-      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
-      return
-    iprot.readStructBegin()
-    while True:
-      (fname, ftype, fid) = iprot.readFieldBegin()
-      if ftype == TType.STOP:
-        break
-      if fid == 1:
-        if ftype == TType.STRUCT:
-          self.io = TIOError()
-          self.io.read(iprot)
-        else:
-          iprot.skip(ftype)
-      else:
-        iprot.skip(ftype)
-      iprot.readFieldEnd()
-    iprot.readStructEnd()
-
-  def write(self, oprot):
-    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
-      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
-      return
-    oprot.writeStructBegin('mutateRow_result')
     if self.io is not None:
       oprot.writeFieldBegin('io', TType.STRUCT, 1)
       self.io.write(oprot)
@@ -3014,11 +2934,11 @@ class getScannerRows_result:
       if fid == 0:
         if ftype == TType.LIST:
           self.success = []
-          (_etype87, _size84) = iprot.readListBegin()
-          for _i88 in xrange(_size84):
-            _elem89 = TResult()
-            _elem89.read(iprot)
-            self.success.append(_elem89)
+          (_etype132, _size129) = iprot.readListBegin()
+          for _i133 in xrange(_size129):
+            _elem134 = TResult()
+            _elem134.read(iprot)
+            self.success.append(_elem134)
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
@@ -3047,8 +2967,8 @@ class getScannerRows_result:
     if self.success is not None:
       oprot.writeFieldBegin('success', TType.LIST, 0)
       oprot.writeListBegin(TType.STRUCT, len(self.success))
-      for iter90 in self.success:
-        iter90.write(oprot)
+      for iter135 in self.success:
+        iter135.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
     if self.io is not None:
@@ -3194,6 +3114,314 @@ class closeScanner_result:
     if self.ia is not None:
       oprot.writeFieldBegin('ia', TType.STRUCT, 2)
       self.ia.write(oprot)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    return
+
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
+class mutateRow_args:
+  """
+  Attributes:
+   - table: table to apply the mutations
+   - rowMutations: mutations to apply
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.STRING, 'table', None, None, ), # 1
+    (2, TType.STRUCT, 'rowMutations', (TRowMutations, TRowMutations.thrift_spec), None, ), # 2
+  )
+
+  def __init__(self, table=None, rowMutations=None,):
+    self.table = table
+    self.rowMutations = rowMutations
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.STRING:
+          self.table = iprot.readString();
+        else:
+          iprot.skip(ftype)
+      elif fid == 2:
+        if ftype == TType.STRUCT:
+          self.rowMutations = TRowMutations()
+          self.rowMutations.read(iprot)
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('mutateRow_args')
+    if self.table is not None:
+      oprot.writeFieldBegin('table', TType.STRING, 1)
+      oprot.writeString(self.table)
+      oprot.writeFieldEnd()
+    if self.rowMutations is not None:
+      oprot.writeFieldBegin('rowMutations', TType.STRUCT, 2)
+      self.rowMutations.write(oprot)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    if self.table is None:
+      raise TProtocol.TProtocolException(message='Required field table is unset!')
+    if self.rowMutations is None:
+      raise TProtocol.TProtocolException(message='Required field rowMutations is unset!')
+    return
+
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
+class mutateRow_result:
+  """
+  Attributes:
+   - io
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.STRUCT, 'io', (TIOError, TIOError.thrift_spec), None, ), # 1
+  )
+
+  def __init__(self, io=None,):
+    self.io = io
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.STRUCT:
+          self.io = TIOError()
+          self.io.read(iprot)
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('mutateRow_result')
+    if self.io is not None:
+      oprot.writeFieldBegin('io', TType.STRUCT, 1)
+      self.io.write(oprot)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    return
+
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
+class getScannerResults_args:
+  """
+  Attributes:
+   - table: the table to get the Scanner for
+   - scan: the scan object to get a Scanner for
+   - numRows: number of rows to return
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.STRING, 'table', None, None, ), # 1
+    (2, TType.STRUCT, 'scan', (TScan, TScan.thrift_spec), None, ), # 2
+    (3, TType.I32, 'numRows', None, 1, ), # 3
+  )
+
+  def __init__(self, table=None, scan=None, numRows=thrift_spec[3][4],):
+    self.table = table
+    self.scan = scan
+    self.numRows = numRows
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.STRING:
+          self.table = iprot.readString();
+        else:
+          iprot.skip(ftype)
+      elif fid == 2:
+        if ftype == TType.STRUCT:
+          self.scan = TScan()
+          self.scan.read(iprot)
+        else:
+          iprot.skip(ftype)
+      elif fid == 3:
+        if ftype == TType.I32:
+          self.numRows = iprot.readI32();
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('getScannerResults_args')
+    if self.table is not None:
+      oprot.writeFieldBegin('table', TType.STRING, 1)
+      oprot.writeString(self.table)
+      oprot.writeFieldEnd()
+    if self.scan is not None:
+      oprot.writeFieldBegin('scan', TType.STRUCT, 2)
+      self.scan.write(oprot)
+      oprot.writeFieldEnd()
+    if self.numRows is not None:
+      oprot.writeFieldBegin('numRows', TType.I32, 3)
+      oprot.writeI32(self.numRows)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    if self.table is None:
+      raise TProtocol.TProtocolException(message='Required field table is unset!')
+    if self.scan is None:
+      raise TProtocol.TProtocolException(message='Required field scan is unset!')
+    return
+
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
+class getScannerResults_result:
+  """
+  Attributes:
+   - success
+   - io
+  """
+
+  thrift_spec = (
+    (0, TType.LIST, 'success', (TType.STRUCT,(TResult, TResult.thrift_spec)), None, ), # 0
+    (1, TType.STRUCT, 'io', (TIOError, TIOError.thrift_spec), None, ), # 1
+  )
+
+  def __init__(self, success=None, io=None,):
+    self.success = success
+    self.io = io
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 0:
+        if ftype == TType.LIST:
+          self.success = []
+          (_etype139, _size136) = iprot.readListBegin()
+          for _i140 in xrange(_size136):
+            _elem141 = TResult()
+            _elem141.read(iprot)
+            self.success.append(_elem141)
+          iprot.readListEnd()
+        else:
+          iprot.skip(ftype)
+      elif fid == 1:
+        if ftype == TType.STRUCT:
+          self.io = TIOError()
+          self.io.read(iprot)
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('getScannerResults_result')
+    if self.success is not None:
+      oprot.writeFieldBegin('success', TType.LIST, 0)
+      oprot.writeListBegin(TType.STRUCT, len(self.success))
+      for iter142 in self.success:
+        iter142.write(oprot)
+      oprot.writeListEnd()
+      oprot.writeFieldEnd()
+    if self.io is not None:
+      oprot.writeFieldBegin('io', TType.STRUCT, 1)
+      self.io.write(oprot)
       oprot.writeFieldEnd()
     oprot.writeFieldStop()
     oprot.writeStructEnd()

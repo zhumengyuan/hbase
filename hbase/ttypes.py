@@ -35,6 +35,33 @@ class TDeleteType:
     "DELETE_COLUMNS": 1,
   }
 
+class TDurability:
+  """
+  Specify Durability:
+   - SKIP_WAL means do not write the Mutation to the WAL.
+   - ASYNC_WAL means write the Mutation to the WAL asynchronously,
+   - SYNC_WAL means write the Mutation to the WAL synchronously,
+   - FSYNC_WAL means Write the Mutation to the WAL synchronously and force the entries to disk.
+  """
+  SKIP_WAL = 1
+  ASYNC_WAL = 2
+  SYNC_WAL = 3
+  FSYNC_WAL = 4
+
+  _VALUES_TO_NAMES = {
+    1: "SKIP_WAL",
+    2: "ASYNC_WAL",
+    3: "SYNC_WAL",
+    4: "FSYNC_WAL",
+  }
+
+  _NAMES_TO_VALUES = {
+    "SKIP_WAL": 1,
+    "ASYNC_WAL": 2,
+    "SYNC_WAL": 3,
+    "FSYNC_WAL": 4,
+  }
+
 
 class TTimeRange:
   """
@@ -495,14 +522,14 @@ class TGet:
   If you specify a time range and a timestamp the range is ignored.
   Timestamps on TColumns are ignored.
 
-  TODO: Filter, Locks
-
   Attributes:
    - row
    - columns
    - timestamp
    - timeRange
    - maxVersions
+   - filterString
+   - attributes
   """
 
   thrift_spec = (
@@ -512,14 +539,18 @@ class TGet:
     (3, TType.I64, 'timestamp', None, None, ), # 3
     (4, TType.STRUCT, 'timeRange', (TTimeRange, TTimeRange.thrift_spec), None, ), # 4
     (5, TType.I32, 'maxVersions', None, None, ), # 5
+    (6, TType.STRING, 'filterString', None, None, ), # 6
+    (7, TType.MAP, 'attributes', (TType.STRING,None,TType.STRING,None), None, ), # 7
   )
 
-  def __init__(self, row=None, columns=None, timestamp=None, timeRange=None, maxVersions=None,):
+  def __init__(self, row=None, columns=None, timestamp=None, timeRange=None, maxVersions=None, filterString=None, attributes=None,):
     self.row = row
     self.columns = columns
     self.timestamp = timestamp
     self.timeRange = timeRange
     self.maxVersions = maxVersions
+    self.filterString = filterString
+    self.attributes = attributes
 
   def read(self, iprot):
     if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
@@ -562,6 +593,22 @@ class TGet:
           self.maxVersions = iprot.readI32();
         else:
           iprot.skip(ftype)
+      elif fid == 6:
+        if ftype == TType.STRING:
+          self.filterString = iprot.readString();
+        else:
+          iprot.skip(ftype)
+      elif fid == 7:
+        if ftype == TType.MAP:
+          self.attributes = {}
+          (_ktype14, _vtype15, _size13 ) = iprot.readMapBegin() 
+          for _i17 in xrange(_size13):
+            _key18 = iprot.readString();
+            _val19 = iprot.readString();
+            self.attributes[_key18] = _val19
+          iprot.readMapEnd()
+        else:
+          iprot.skip(ftype)
       else:
         iprot.skip(ftype)
       iprot.readFieldEnd()
@@ -579,8 +626,8 @@ class TGet:
     if self.columns is not None:
       oprot.writeFieldBegin('columns', TType.LIST, 2)
       oprot.writeListBegin(TType.STRUCT, len(self.columns))
-      for iter13 in self.columns:
-        iter13.write(oprot)
+      for iter20 in self.columns:
+        iter20.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
     if self.timestamp is not None:
@@ -594,6 +641,18 @@ class TGet:
     if self.maxVersions is not None:
       oprot.writeFieldBegin('maxVersions', TType.I32, 5)
       oprot.writeI32(self.maxVersions)
+      oprot.writeFieldEnd()
+    if self.filterString is not None:
+      oprot.writeFieldBegin('filterString', TType.STRING, 6)
+      oprot.writeString(self.filterString)
+      oprot.writeFieldEnd()
+    if self.attributes is not None:
+      oprot.writeFieldBegin('attributes', TType.MAP, 7)
+      oprot.writeMapBegin(TType.STRING, TType.STRING, len(self.attributes))
+      for kiter21,viter22 in self.attributes.items():
+        oprot.writeString(kiter21)
+        oprot.writeString(viter22)
+      oprot.writeMapEnd()
       oprot.writeFieldEnd()
     oprot.writeFieldStop()
     oprot.writeStructEnd()
@@ -624,14 +683,16 @@ class TPut:
   don't have one. If you don't provide a default timestamp
   the current time is inserted.
 
-  You can also specify if this Put should be written
-  to the write-ahead Log (WAL) or not. It defaults to true.
+  You can specify how this Put should be written to the write-ahead Log (WAL)
+  by changing the durability. If you don't provide durability, it defaults to
+  column family's default setting for durability.
 
   Attributes:
    - row
    - columnValues
    - timestamp
-   - writeToWal
+   - attributes
+   - durability
   """
 
   thrift_spec = (
@@ -639,14 +700,17 @@ class TPut:
     (1, TType.STRING, 'row', None, None, ), # 1
     (2, TType.LIST, 'columnValues', (TType.STRUCT,(TColumnValue, TColumnValue.thrift_spec)), None, ), # 2
     (3, TType.I64, 'timestamp', None, None, ), # 3
-    (4, TType.BOOL, 'writeToWal', None, True, ), # 4
+    None, # 4
+    (5, TType.MAP, 'attributes', (TType.STRING,None,TType.STRING,None), None, ), # 5
+    (6, TType.I32, 'durability', None, None, ), # 6
   )
 
-  def __init__(self, row=None, columnValues=None, timestamp=None, writeToWal=thrift_spec[4][4],):
+  def __init__(self, row=None, columnValues=None, timestamp=None, attributes=None, durability=None,):
     self.row = row
     self.columnValues = columnValues
     self.timestamp = timestamp
-    self.writeToWal = writeToWal
+    self.attributes = attributes
+    self.durability = durability
 
   def read(self, iprot):
     if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
@@ -665,11 +729,11 @@ class TPut:
       elif fid == 2:
         if ftype == TType.LIST:
           self.columnValues = []
-          (_etype17, _size14) = iprot.readListBegin()
-          for _i18 in xrange(_size14):
-            _elem19 = TColumnValue()
-            _elem19.read(iprot)
-            self.columnValues.append(_elem19)
+          (_etype26, _size23) = iprot.readListBegin()
+          for _i27 in xrange(_size23):
+            _elem28 = TColumnValue()
+            _elem28.read(iprot)
+            self.columnValues.append(_elem28)
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
@@ -678,9 +742,20 @@ class TPut:
           self.timestamp = iprot.readI64();
         else:
           iprot.skip(ftype)
-      elif fid == 4:
-        if ftype == TType.BOOL:
-          self.writeToWal = iprot.readBool();
+      elif fid == 5:
+        if ftype == TType.MAP:
+          self.attributes = {}
+          (_ktype30, _vtype31, _size29 ) = iprot.readMapBegin() 
+          for _i33 in xrange(_size29):
+            _key34 = iprot.readString();
+            _val35 = iprot.readString();
+            self.attributes[_key34] = _val35
+          iprot.readMapEnd()
+        else:
+          iprot.skip(ftype)
+      elif fid == 6:
+        if ftype == TType.I32:
+          self.durability = iprot.readI32();
         else:
           iprot.skip(ftype)
       else:
@@ -700,17 +775,25 @@ class TPut:
     if self.columnValues is not None:
       oprot.writeFieldBegin('columnValues', TType.LIST, 2)
       oprot.writeListBegin(TType.STRUCT, len(self.columnValues))
-      for iter20 in self.columnValues:
-        iter20.write(oprot)
+      for iter36 in self.columnValues:
+        iter36.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
     if self.timestamp is not None:
       oprot.writeFieldBegin('timestamp', TType.I64, 3)
       oprot.writeI64(self.timestamp)
       oprot.writeFieldEnd()
-    if self.writeToWal is not None:
-      oprot.writeFieldBegin('writeToWal', TType.BOOL, 4)
-      oprot.writeBool(self.writeToWal)
+    if self.attributes is not None:
+      oprot.writeFieldBegin('attributes', TType.MAP, 5)
+      oprot.writeMapBegin(TType.STRING, TType.STRING, len(self.attributes))
+      for kiter37,viter38 in self.attributes.items():
+        oprot.writeString(kiter37)
+        oprot.writeString(viter38)
+      oprot.writeMapEnd()
+      oprot.writeFieldEnd()
+    if self.durability is not None:
+      oprot.writeFieldBegin('durability', TType.I32, 6)
+      oprot.writeI32(self.durability)
       oprot.writeFieldEnd()
     oprot.writeFieldStop()
     oprot.writeStructEnd()
@@ -757,13 +840,17 @@ class TDelete:
   as if you had added a TColumn for every column family and this timestamp
   (i.e. all versions older than or equal in all column families will be deleted)
 
+  You can specify how this Delete should be written to the write-ahead Log (WAL)
+  by changing the durability. If you don't provide durability, it defaults to
+  column family's default setting for durability.
 
   Attributes:
    - row
    - columns
    - timestamp
    - deleteType
-   - writeToWal
+   - attributes
+   - durability
   """
 
   thrift_spec = (
@@ -772,15 +859,18 @@ class TDelete:
     (2, TType.LIST, 'columns', (TType.STRUCT,(TColumn, TColumn.thrift_spec)), None, ), # 2
     (3, TType.I64, 'timestamp', None, None, ), # 3
     (4, TType.I32, 'deleteType', None,     1, ), # 4
-    (5, TType.BOOL, 'writeToWal', None, True, ), # 5
+    None, # 5
+    (6, TType.MAP, 'attributes', (TType.STRING,None,TType.STRING,None), None, ), # 6
+    (7, TType.I32, 'durability', None, None, ), # 7
   )
 
-  def __init__(self, row=None, columns=None, timestamp=None, deleteType=thrift_spec[4][4], writeToWal=thrift_spec[5][4],):
+  def __init__(self, row=None, columns=None, timestamp=None, deleteType=thrift_spec[4][4], attributes=None, durability=None,):
     self.row = row
     self.columns = columns
     self.timestamp = timestamp
     self.deleteType = deleteType
-    self.writeToWal = writeToWal
+    self.attributes = attributes
+    self.durability = durability
 
   def read(self, iprot):
     if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
@@ -799,11 +889,11 @@ class TDelete:
       elif fid == 2:
         if ftype == TType.LIST:
           self.columns = []
-          (_etype24, _size21) = iprot.readListBegin()
-          for _i25 in xrange(_size21):
-            _elem26 = TColumn()
-            _elem26.read(iprot)
-            self.columns.append(_elem26)
+          (_etype42, _size39) = iprot.readListBegin()
+          for _i43 in xrange(_size39):
+            _elem44 = TColumn()
+            _elem44.read(iprot)
+            self.columns.append(_elem44)
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
@@ -817,9 +907,20 @@ class TDelete:
           self.deleteType = iprot.readI32();
         else:
           iprot.skip(ftype)
-      elif fid == 5:
-        if ftype == TType.BOOL:
-          self.writeToWal = iprot.readBool();
+      elif fid == 6:
+        if ftype == TType.MAP:
+          self.attributes = {}
+          (_ktype46, _vtype47, _size45 ) = iprot.readMapBegin() 
+          for _i49 in xrange(_size45):
+            _key50 = iprot.readString();
+            _val51 = iprot.readString();
+            self.attributes[_key50] = _val51
+          iprot.readMapEnd()
+        else:
+          iprot.skip(ftype)
+      elif fid == 7:
+        if ftype == TType.I32:
+          self.durability = iprot.readI32();
         else:
           iprot.skip(ftype)
       else:
@@ -839,8 +940,8 @@ class TDelete:
     if self.columns is not None:
       oprot.writeFieldBegin('columns', TType.LIST, 2)
       oprot.writeListBegin(TType.STRUCT, len(self.columns))
-      for iter27 in self.columns:
-        iter27.write(oprot)
+      for iter52 in self.columns:
+        iter52.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
     if self.timestamp is not None:
@@ -851,9 +952,17 @@ class TDelete:
       oprot.writeFieldBegin('deleteType', TType.I32, 4)
       oprot.writeI32(self.deleteType)
       oprot.writeFieldEnd()
-    if self.writeToWal is not None:
-      oprot.writeFieldBegin('writeToWal', TType.BOOL, 5)
-      oprot.writeBool(self.writeToWal)
+    if self.attributes is not None:
+      oprot.writeFieldBegin('attributes', TType.MAP, 6)
+      oprot.writeMapBegin(TType.STRING, TType.STRING, len(self.attributes))
+      for kiter53,viter54 in self.attributes.items():
+        oprot.writeString(kiter53)
+        oprot.writeString(viter54)
+      oprot.writeMapEnd()
+      oprot.writeFieldEnd()
+    if self.durability is not None:
+      oprot.writeFieldBegin('durability', TType.I32, 7)
+      oprot.writeI32(self.durability)
       oprot.writeFieldEnd()
     oprot.writeFieldStop()
     oprot.writeStructEnd()
@@ -879,26 +988,31 @@ class TIncrement:
   """
   Used to perform Increment operations for a single row.
 
-  You can specify if this Increment should be written
-  to the write-ahead Log (WAL) or not. It defaults to true.
+  You can specify how this Increment should be written to the write-ahead Log (WAL)
+  by changing the durability. If you don't provide durability, it defaults to
+  column family's default setting for durability.
 
   Attributes:
    - row
    - columns
-   - writeToWal
+   - attributes
+   - durability
   """
 
   thrift_spec = (
     None, # 0
     (1, TType.STRING, 'row', None, None, ), # 1
     (2, TType.LIST, 'columns', (TType.STRUCT,(TColumnIncrement, TColumnIncrement.thrift_spec)), None, ), # 2
-    (3, TType.BOOL, 'writeToWal', None, True, ), # 3
+    None, # 3
+    (4, TType.MAP, 'attributes', (TType.STRING,None,TType.STRING,None), None, ), # 4
+    (5, TType.I32, 'durability', None, None, ), # 5
   )
 
-  def __init__(self, row=None, columns=None, writeToWal=thrift_spec[3][4],):
+  def __init__(self, row=None, columns=None, attributes=None, durability=None,):
     self.row = row
     self.columns = columns
-    self.writeToWal = writeToWal
+    self.attributes = attributes
+    self.durability = durability
 
   def read(self, iprot):
     if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
@@ -917,17 +1031,28 @@ class TIncrement:
       elif fid == 2:
         if ftype == TType.LIST:
           self.columns = []
-          (_etype31, _size28) = iprot.readListBegin()
-          for _i32 in xrange(_size28):
-            _elem33 = TColumnIncrement()
-            _elem33.read(iprot)
-            self.columns.append(_elem33)
+          (_etype58, _size55) = iprot.readListBegin()
+          for _i59 in xrange(_size55):
+            _elem60 = TColumnIncrement()
+            _elem60.read(iprot)
+            self.columns.append(_elem60)
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
-      elif fid == 3:
-        if ftype == TType.BOOL:
-          self.writeToWal = iprot.readBool();
+      elif fid == 4:
+        if ftype == TType.MAP:
+          self.attributes = {}
+          (_ktype62, _vtype63, _size61 ) = iprot.readMapBegin() 
+          for _i65 in xrange(_size61):
+            _key66 = iprot.readString();
+            _val67 = iprot.readString();
+            self.attributes[_key66] = _val67
+          iprot.readMapEnd()
+        else:
+          iprot.skip(ftype)
+      elif fid == 5:
+        if ftype == TType.I32:
+          self.durability = iprot.readI32();
         else:
           iprot.skip(ftype)
       else:
@@ -947,13 +1072,21 @@ class TIncrement:
     if self.columns is not None:
       oprot.writeFieldBegin('columns', TType.LIST, 2)
       oprot.writeListBegin(TType.STRUCT, len(self.columns))
-      for iter34 in self.columns:
-        iter34.write(oprot)
+      for iter68 in self.columns:
+        iter68.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
-    if self.writeToWal is not None:
-      oprot.writeFieldBegin('writeToWal', TType.BOOL, 3)
-      oprot.writeBool(self.writeToWal)
+    if self.attributes is not None:
+      oprot.writeFieldBegin('attributes', TType.MAP, 4)
+      oprot.writeMapBegin(TType.STRING, TType.STRING, len(self.attributes))
+      for kiter69,viter70 in self.attributes.items():
+        oprot.writeString(kiter69)
+        oprot.writeString(viter70)
+      oprot.writeMapEnd()
+      oprot.writeFieldEnd()
+    if self.durability is not None:
+      oprot.writeFieldBegin('durability', TType.I32, 5)
+      oprot.writeI32(self.durability)
       oprot.writeFieldEnd()
     oprot.writeFieldStop()
     oprot.writeStructEnd()
@@ -977,10 +1110,188 @@ class TIncrement:
   def __ne__(self, other):
     return not (self == other)
 
+class TScan:
+  """
+  Any timestamps in the columns are ignored, use timeRange to select by timestamp.
+  Max versions defaults to 1.
+
+  Attributes:
+   - startRow
+   - stopRow
+   - columns
+   - caching
+   - maxVersions
+   - timeRange
+   - filterString
+   - batchSize
+   - attributes
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.STRING, 'startRow', None, None, ), # 1
+    (2, TType.STRING, 'stopRow', None, None, ), # 2
+    (3, TType.LIST, 'columns', (TType.STRUCT,(TColumn, TColumn.thrift_spec)), None, ), # 3
+    (4, TType.I32, 'caching', None, None, ), # 4
+    (5, TType.I32, 'maxVersions', None, 1, ), # 5
+    (6, TType.STRUCT, 'timeRange', (TTimeRange, TTimeRange.thrift_spec), None, ), # 6
+    (7, TType.STRING, 'filterString', None, None, ), # 7
+    (8, TType.I32, 'batchSize', None, None, ), # 8
+    (9, TType.MAP, 'attributes', (TType.STRING,None,TType.STRING,None), None, ), # 9
+  )
+
+  def __init__(self, startRow=None, stopRow=None, columns=None, caching=None, maxVersions=thrift_spec[5][4], timeRange=None, filterString=None, batchSize=None, attributes=None,):
+    self.startRow = startRow
+    self.stopRow = stopRow
+    self.columns = columns
+    self.caching = caching
+    self.maxVersions = maxVersions
+    self.timeRange = timeRange
+    self.filterString = filterString
+    self.batchSize = batchSize
+    self.attributes = attributes
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.STRING:
+          self.startRow = iprot.readString();
+        else:
+          iprot.skip(ftype)
+      elif fid == 2:
+        if ftype == TType.STRING:
+          self.stopRow = iprot.readString();
+        else:
+          iprot.skip(ftype)
+      elif fid == 3:
+        if ftype == TType.LIST:
+          self.columns = []
+          (_etype74, _size71) = iprot.readListBegin()
+          for _i75 in xrange(_size71):
+            _elem76 = TColumn()
+            _elem76.read(iprot)
+            self.columns.append(_elem76)
+          iprot.readListEnd()
+        else:
+          iprot.skip(ftype)
+      elif fid == 4:
+        if ftype == TType.I32:
+          self.caching = iprot.readI32();
+        else:
+          iprot.skip(ftype)
+      elif fid == 5:
+        if ftype == TType.I32:
+          self.maxVersions = iprot.readI32();
+        else:
+          iprot.skip(ftype)
+      elif fid == 6:
+        if ftype == TType.STRUCT:
+          self.timeRange = TTimeRange()
+          self.timeRange.read(iprot)
+        else:
+          iprot.skip(ftype)
+      elif fid == 7:
+        if ftype == TType.STRING:
+          self.filterString = iprot.readString();
+        else:
+          iprot.skip(ftype)
+      elif fid == 8:
+        if ftype == TType.I32:
+          self.batchSize = iprot.readI32();
+        else:
+          iprot.skip(ftype)
+      elif fid == 9:
+        if ftype == TType.MAP:
+          self.attributes = {}
+          (_ktype78, _vtype79, _size77 ) = iprot.readMapBegin() 
+          for _i81 in xrange(_size77):
+            _key82 = iprot.readString();
+            _val83 = iprot.readString();
+            self.attributes[_key82] = _val83
+          iprot.readMapEnd()
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('TScan')
+    if self.startRow is not None:
+      oprot.writeFieldBegin('startRow', TType.STRING, 1)
+      oprot.writeString(self.startRow)
+      oprot.writeFieldEnd()
+    if self.stopRow is not None:
+      oprot.writeFieldBegin('stopRow', TType.STRING, 2)
+      oprot.writeString(self.stopRow)
+      oprot.writeFieldEnd()
+    if self.columns is not None:
+      oprot.writeFieldBegin('columns', TType.LIST, 3)
+      oprot.writeListBegin(TType.STRUCT, len(self.columns))
+      for iter84 in self.columns:
+        iter84.write(oprot)
+      oprot.writeListEnd()
+      oprot.writeFieldEnd()
+    if self.caching is not None:
+      oprot.writeFieldBegin('caching', TType.I32, 4)
+      oprot.writeI32(self.caching)
+      oprot.writeFieldEnd()
+    if self.maxVersions is not None:
+      oprot.writeFieldBegin('maxVersions', TType.I32, 5)
+      oprot.writeI32(self.maxVersions)
+      oprot.writeFieldEnd()
+    if self.timeRange is not None:
+      oprot.writeFieldBegin('timeRange', TType.STRUCT, 6)
+      self.timeRange.write(oprot)
+      oprot.writeFieldEnd()
+    if self.filterString is not None:
+      oprot.writeFieldBegin('filterString', TType.STRING, 7)
+      oprot.writeString(self.filterString)
+      oprot.writeFieldEnd()
+    if self.batchSize is not None:
+      oprot.writeFieldBegin('batchSize', TType.I32, 8)
+      oprot.writeI32(self.batchSize)
+      oprot.writeFieldEnd()
+    if self.attributes is not None:
+      oprot.writeFieldBegin('attributes', TType.MAP, 9)
+      oprot.writeMapBegin(TType.STRING, TType.STRING, len(self.attributes))
+      for kiter85,viter86 in self.attributes.items():
+        oprot.writeString(kiter85)
+        oprot.writeString(viter86)
+      oprot.writeMapEnd()
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    return
+
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
 class TMutation:
   """
-  Used to perform mutation operations for a single row.
-  First perform TPut operations, then perform TDelete operations.
+  Atomic mutation for the specified row. It can be either Put or Delete.
 
   Attributes:
    - put
@@ -1056,7 +1367,7 @@ class TMutation:
 
 class TRowMutations:
   """
-  a list for atomic row mutations
+  A TRowMutations object is used to apply a number of Mutations to a single row.
 
   Attributes:
    - row
@@ -1090,11 +1401,11 @@ class TRowMutations:
       elif fid == 2:
         if ftype == TType.LIST:
           self.mutations = []
-          (_etype38, _size35) = iprot.readListBegin()
-          for _i39 in xrange(_size35):
-            _elem40 = TMutation()
-            _elem40.read(iprot)
-            self.mutations.append(_elem40)
+          (_etype90, _size87) = iprot.readListBegin()
+          for _i91 in xrange(_size87):
+            _elem92 = TMutation()
+            _elem92.read(iprot)
+            self.mutations.append(_elem92)
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
@@ -1115,8 +1426,8 @@ class TRowMutations:
     if self.mutations is not None:
       oprot.writeFieldBegin('mutations', TType.LIST, 2)
       oprot.writeListBegin(TType.STRUCT, len(self.mutations))
-      for iter41 in self.mutations:
-        iter41.write(oprot)
+      for iter93 in self.mutations:
+        iter93.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
     oprot.writeFieldStop()
@@ -1127,139 +1438,6 @@ class TRowMutations:
       raise TProtocol.TProtocolException(message='Required field row is unset!')
     if self.mutations is None:
       raise TProtocol.TProtocolException(message='Required field mutations is unset!')
-    return
-
-
-  def __repr__(self):
-    L = ['%s=%r' % (key, value)
-      for key, value in self.__dict__.iteritems()]
-    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
-
-  def __eq__(self, other):
-    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
-
-  def __ne__(self, other):
-    return not (self == other)
-
-class TScan:
-  """
-  Any timestamps in the columns are ignored, use timeRange to select by timestamp.
-  Max versions defaults to 1.
-
-  Attributes:
-   - startRow
-   - stopRow
-   - columns
-   - caching
-   - maxVersions
-   - timeRange
-  """
-
-  thrift_spec = (
-    None, # 0
-    (1, TType.STRING, 'startRow', None, None, ), # 1
-    (2, TType.STRING, 'stopRow', None, None, ), # 2
-    (3, TType.LIST, 'columns', (TType.STRUCT,(TColumn, TColumn.thrift_spec)), None, ), # 3
-    (4, TType.I32, 'caching', None, None, ), # 4
-    (5, TType.I32, 'maxVersions', None, 1, ), # 5
-    (6, TType.STRUCT, 'timeRange', (TTimeRange, TTimeRange.thrift_spec), None, ), # 6
-  )
-
-  def __init__(self, startRow=None, stopRow=None, columns=None, caching=None, maxVersions=thrift_spec[5][4], timeRange=None,):
-    self.startRow = startRow
-    self.stopRow = stopRow
-    self.columns = columns
-    self.caching = caching
-    self.maxVersions = maxVersions
-    self.timeRange = timeRange
-
-  def read(self, iprot):
-    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
-      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
-      return
-    iprot.readStructBegin()
-    while True:
-      (fname, ftype, fid) = iprot.readFieldBegin()
-      if ftype == TType.STOP:
-        break
-      if fid == 1:
-        if ftype == TType.STRING:
-          self.startRow = iprot.readString();
-        else:
-          iprot.skip(ftype)
-      elif fid == 2:
-        if ftype == TType.STRING:
-          self.stopRow = iprot.readString();
-        else:
-          iprot.skip(ftype)
-      elif fid == 3:
-        if ftype == TType.LIST:
-          self.columns = []
-          (_etype45, _size42) = iprot.readListBegin()
-          for _i46 in xrange(_size42):
-            _elem47 = TColumn()
-            _elem47.read(iprot)
-            self.columns.append(_elem47)
-          iprot.readListEnd()
-        else:
-          iprot.skip(ftype)
-      elif fid == 4:
-        if ftype == TType.I32:
-          self.caching = iprot.readI32();
-        else:
-          iprot.skip(ftype)
-      elif fid == 5:
-        if ftype == TType.I32:
-          self.maxVersions = iprot.readI32();
-        else:
-          iprot.skip(ftype)
-      elif fid == 6:
-        if ftype == TType.STRUCT:
-          self.timeRange = TTimeRange()
-          self.timeRange.read(iprot)
-        else:
-          iprot.skip(ftype)
-      else:
-        iprot.skip(ftype)
-      iprot.readFieldEnd()
-    iprot.readStructEnd()
-
-  def write(self, oprot):
-    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
-      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
-      return
-    oprot.writeStructBegin('TScan')
-    if self.startRow is not None:
-      oprot.writeFieldBegin('startRow', TType.STRING, 1)
-      oprot.writeString(self.startRow)
-      oprot.writeFieldEnd()
-    if self.stopRow is not None:
-      oprot.writeFieldBegin('stopRow', TType.STRING, 2)
-      oprot.writeString(self.stopRow)
-      oprot.writeFieldEnd()
-    if self.columns is not None:
-      oprot.writeFieldBegin('columns', TType.LIST, 3)
-      oprot.writeListBegin(TType.STRUCT, len(self.columns))
-      for iter48 in self.columns:
-        iter48.write(oprot)
-      oprot.writeListEnd()
-      oprot.writeFieldEnd()
-    if self.caching is not None:
-      oprot.writeFieldBegin('caching', TType.I32, 4)
-      oprot.writeI32(self.caching)
-      oprot.writeFieldEnd()
-    if self.maxVersions is not None:
-      oprot.writeFieldBegin('maxVersions', TType.I32, 5)
-      oprot.writeI32(self.maxVersions)
-      oprot.writeFieldEnd()
-    if self.timeRange is not None:
-      oprot.writeFieldBegin('timeRange', TType.STRUCT, 6)
-      self.timeRange.write(oprot)
-      oprot.writeFieldEnd()
-    oprot.writeFieldStop()
-    oprot.writeStructEnd()
-
-  def validate(self):
     return
 
 
